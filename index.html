@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https:; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1c1f24">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Shotlist">
+<title>Shotlist</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="bar">
+  <button id="back" class="back" type="button" hidden>‹ Lists</button>
+  <h1 id="title">Shotlist</h1>
+  <button id="sync" class="sync" type="button" aria-live="polite"></button>
+</header>
+<main id="main"></main>
+<p id="note" class="note" role="status" hidden></p>
+<noscript><p class="note">This app needs JavaScript.</p></noscript>
+<script src="app.js"></script>
+</body>
+</html>
