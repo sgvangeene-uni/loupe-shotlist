@@ -3,7 +3,7 @@
 // to the site (POST) always go to the site.
 "use strict";
 
-var CACHE = "loupe-shot-72ec52b0401c";
+var CACHE = "loupe-shot-cb85add8fe5e";
 var FILES = ["./", "index.html", "app.js", "app.css", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", function (event) {

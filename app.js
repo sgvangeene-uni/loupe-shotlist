@@ -235,7 +235,7 @@
     };
     state.queue.push(t);
     if (!keep("queue", state.queue)) {
-      note("This phone could not keep the tick. Do not use a private window for this app.", true);
+      note("This phone could not save the tick. Do not use a private window for this app.", true);
     }
     if (navigator.vibrate) {
       try { navigator.vibrate(12); } catch (e) { /* not on every phone */ }
@@ -299,7 +299,7 @@
     }, function () {
       state.problem = "offline";
       if (!quiet) {
-        note("No connection: these are the lists as they were.");
+        note("No connection: these are the lists as they were last loaded.");
       }
     }).then(render);
   }
@@ -357,7 +357,7 @@
     main.textContent = "";
     $("back").hidden = true;
     if (!storageWorks) {
-      note("This phone does not keep what the app saves (a private window?). Ticks could be lost.", true);
+      note("This phone does not keep what the app saves (a private window?). Ticks may be lost.", true);
     }
     if (!state.token) {
       $("title").textContent = "Link this phone";
@@ -365,7 +365,7 @@
       return;
     }
     if (state.problem === "unlinked") {
-      note("This phone is no longer linked to Loupe Flow. Link it again; ticks that wait are kept.", true);
+      note("This phone is no longer linked to Loupe Flow. Link it again; ticks waiting to be sent are kept.", true);
     }
     var list = state.screen === "list" ? listById(state.listId) : null;
     if (list) {
@@ -383,10 +383,10 @@
       || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
     if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !standalone) {
       main.appendChild(el("p", "note", "On an iPhone: first add this page to your home screen "
-        + "(Share → Add to Home Screen), open it from there, and link it there."));
+        + "(Share → Add to Home Screen), then open it from there and link it."));
     }
     main.appendChild(el("p", "help", "In Loupe Flow: Settings → Online → Phones → Link a phone. "
-      + "The code it shows works for 15 minutes, once."));
+      + "The code it shows can be used once, within 15 minutes."));
     var fields = [
       ["site", "Your site", "url", state.site || siteOfPage()],
       ["code", "Code", "text", ""],
@@ -424,7 +424,7 @@
       event.preventDefault();
       var site = cleanSite($("f-site").value);
       if (!site) {
-        note("That is not a site address (https://...).", true);
+        note("That is not a valid site address (https://...).", true);
         return;
       }
       go.disabled = true;
@@ -438,16 +438,16 @@
           keep("site", state.site);
           keep("token", state.token);
           keep("phone", state.phone);
-          note("Linked. The shotlists that are online come now.");
+          note("Linked. The published shotlists are now being loaded.");
           return fetchLists(false).then(sync);
         }
         var e = answer && answer.error;
-        note(e === "invalid" ? "That code is not right, or no longer works. Make a new one in Loupe Flow."
-          : e === "blocked" ? "Too many wrong codes. Make a new code in Loupe Flow and try again later."
-            : e === "busy" ? "The site is busy. Try again in a minute."
-              : "That did not work. Check the code.", true);
+        note(e === "invalid" ? "That code is incorrect or no longer valid. Create a new one in Loupe Flow."
+          : e === "blocked" ? "Too many incorrect codes. Create a new code in Loupe Flow and try again later."
+            : e === "busy" ? "The site is busy. Please try again in a minute."
+              : "That did not work. Please check the code.", true);
       }, function () {
-        note("No connection to that site. Check the address and the connection.", true);
+        note("Cannot connect to that site. Check the address and your connection.", true);
       }).then(function () {
         go.disabled = false;
         if (!state.token) {
@@ -472,7 +472,7 @@
     top.appendChild(refresh);
     main.appendChild(top);
     if (!state.lists.length) {
-      main.appendChild(el("p", "help", "No shotlist is online. Put one online in Loupe Flow, in the job's window."));
+      main.appendChild(el("p", "help", "No shotlists are published. Publish one in Loupe Flow, in the job's window."));
     }
     var ul = el("ul", "lists");
     state.lists.forEach(function (list) {
@@ -553,7 +553,7 @@
       text.appendChild(document.createTextNode(item.text));
       var mine = state.queue.filter(function (t) { return t.list === list.id && t.item === item.id; });
       if (mine.some(function (t) { return t.state === "refused"; })) {
-        text.appendChild(el("span", "state bad", "A tick was not taken by the site."));
+        text.appendChild(el("span", "state bad", "The site did not accept this tick."));
       } else if (s && s.state === "waiting") {
         text.appendChild(el("span", "state", "waiting to be sent"));
       }
@@ -607,7 +607,7 @@
       note(r.length + (r.length === 1 ? " tick was" : " ticks were") + " not taken by the site: its list is no "
         + "longer online, or it was out of shape. Loupe Flow does not have " + (r.length === 1 ? "it." : "them."), true);
     } else if (waiting().length) {
-      note("Ticks wait on this phone until there is a connection; they go by themselves.");
+      note("Ticks wait on this phone until there is a connection, and are then sent automatically.");
       state.retryAt = 0;
       sync();
     }
@@ -639,7 +639,7 @@
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(function () {
-      note("This app could not make itself work without a connection here.", true);
+      note("This app could not set itself up to work without a connection here.", true);
     });
   }
   if (navigator.storage && navigator.storage.persist) {
