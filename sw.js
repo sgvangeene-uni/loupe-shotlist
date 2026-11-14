@@ -3,12 +3,13 @@
 // to the site (POST) always go to the site.
 "use strict";
 
-var CACHE = "loupe-shot-cb85add8fe5e";
+var CACHE = "loupe-shot-f8166911c512";
 var FILES = ["./", "index.html", "app.js", "app.css", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", function (event) {
   event.waitUntil(caches.open(CACHE).then(function (cache) {
-    return cache.addAll(FILES);
+    // Past the browser's own cache: a new version never keeps an old file.
+    return cache.addAll(FILES.map(function (f) { return new Request(f, { cache: "reload" }); }));
   }).then(function () {
     return self.skipWaiting();
   }));

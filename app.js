@@ -15,6 +15,7 @@
   var SEND_EVERY_MS = 20000;
   var REFRESH_AFTER_MS = 60000;
   var KEEP_SENT_DAYS = 30;
+  var CONFIRM_AFTER_MS = 1500;
 
   // ---- what the phone keeps ----
 
@@ -107,17 +108,6 @@
     n.hidden = !text;
   }
 
-  // The site this app belongs to: served by the site itself, everything
-  // before /_functions/; elsewhere, what was typed (or given after #site=).
-  function siteOfPage() {
-    var at = window.location.pathname.indexOf("/_functions/");
-    if (at >= 0) {
-      return window.location.origin + window.location.pathname.slice(0, at);
-    }
-    var m = /(?:^|[#&])site=([^&]+)/.exec(window.location.hash || "");
-    return m ? decodeURIComponent(m[1]) : "";
-  }
-
   function cleanSite(text) {
     var t = String(text || "").trim().replace(/\/+$/, "");
     if (!/^https?:\/\//i.test(t)) {
@@ -163,16 +153,69 @@
     });
   }
 
+  function wait(seconds) {
+    state.problem = "busy";
+    state.retryAt = Date.now() + 1000 * Math.max(1, Number(seconds) || 30);
+  }
+
+  // "Not linked" only when a second call, a moment later, says so too: a
+  // passing fault of the site never sends the photographer back to the desk.
   function refused(answer) {
     if (answer.error === "busy" || answer.error === "blocked") {
-      state.problem = "busy";
-      state.retryAt = Date.now() + 1000 * Math.max(1, Number(answer.retryAfter) || 30);
-    } else if (answer.error === "no_access") {
-      state.problem = "unlinked";
+      wait(answer.retryAfter);
+      return Promise.resolve();
     }
+    if (answer.error !== "no_access") {
+      return Promise.resolve();
+    }
+    var token = state.token;
+    return new Promise(function (done) { window.setTimeout(done, CONFIRM_AFTER_MS); }).then(function () {
+      return call({ action: "lists", token: token });
+    }).then(function (again) {
+      if (token !== state.token) {
+        return;
+      }
+      if (again && again.ok === true) {
+        wait(10);                 // linked after all: try again shortly
+      } else if (again && again.error === "no_access") {
+        state.problem = "unlinked";
+      } else if (again) {
+        wait(again.retryAfter);
+      }
+    }, function () {
+      state.problem = "offline";
+    });
   }
 
   // ---- ticks ----
+
+  // Two windows of the app (Chrome and the installed app share what the
+  // phone keeps) each add to the one queue: before writing, what the other
+  // wrote is taken in, by id; sent or refused wins over waiting.
+  var tidied = {};
+
+  function mergeQueue(other) {
+    var mine = {};
+    state.queue.forEach(function (t) { mine[t.id] = t; });
+    (Array.isArray(other) ? other : []).forEach(function (t) {
+      if (!t || typeof t.id !== "string" || tidied[t.id]) {
+        return;
+      }
+      var m = mine[t.id];
+      if (!m) {
+        state.queue.push(t);
+        mine[t.id] = t;
+      } else if (m.state === "waiting" && t.state !== "waiting") {
+        m.state = t.state;
+        m.why = t.why;
+      }
+    });
+  }
+
+  function saveQueue() {
+    mergeQueue(load("queue", []));
+    return keep("queue", state.queue);
+  }
 
   function waiting() {
     return state.queue.filter(function (t) { return t.state === "waiting"; });
@@ -197,10 +240,10 @@
       events: batch.map(function (t) { return { id: t.id, list: t.list, item: t.item, on: t.on, at: t.at, tz: t.tz }; })
     }).then(function (answer) {
       if (!answer || answer.ok !== true) {
-        refused(answer || {});
-        return;
+        return refused(answer || {});
       }
       state.problem = null;
+      var moved = 0;
       var stored = {};
       (answer.stored || []).forEach(function (id) { stored[id] = true; });
       var why = {};
@@ -211,12 +254,17 @@
         }
         if (stored[t.id]) {
           t.state = "sent";
-        } else if (why[t.id]) {
+          moved += 1;
+        } else if (why[t.id] && why[t.id] !== "later") {
           t.state = "refused";
           t.why = why[t.id];
+          moved += 1;
         }
       });
-      keep("queue", state.queue);
+      saveQueue();
+      if (!moved) {
+        wait(10);                 // "later" for all of them: not again at once
+      }
     }, function () {
       state.problem = "offline";
     }).then(function () {
@@ -234,7 +282,7 @@
       tz: -new Date().getTimezoneOffset(), state: "waiting"
     };
     state.queue.push(t);
-    if (!keep("queue", state.queue)) {
+    if (!saveQueue()) {
       note("This phone could not save the tick. Do not use a private window for this app.", true);
     }
     if (navigator.vibrate) {
@@ -272,21 +320,25 @@
       return t.state === "waiting" || here[t.list] || t.at > before;
     });
     if (kept.length !== state.queue.length) {
+      state.queue.forEach(function (t) {
+        if (kept.indexOf(t) < 0) {
+          tidied[t.id] = true;
+        }
+      });
       state.queue = kept;
-      keep("queue", state.queue);
+      saveQueue();
     }
   }
 
   // ---- lists ----
 
-  function fetchLists(quiet) {
-    if (!state.token || state.problem === "unlinked") {
+  function fetchLists(quiet, again) {
+    if (!state.token || (state.problem === "unlinked" && !again)) {
       return Promise.resolve();
     }
     return call({ action: "lists", token: state.token }).then(function (answer) {
       if (!answer || answer.ok !== true) {
-        refused(answer || {});
-        return;
+        return refused(answer || {});
       }
       if (state.problem !== "busy") {
         state.problem = null;
@@ -388,7 +440,9 @@
     main.appendChild(el("p", "help", "In Loupe Flow: Settings → Online → Phones → Link a phone. "
       + "The code it shows can be used once, within 15 minutes."));
     var fields = [
-      ["site", "Your site", "url", state.site || siteOfPage()],
+      // Typed by hand, never filled in from a link: the code goes only to
+      // the site Simon names himself.
+      ["site", "Your site", "url", state.site],
       ["code", "Code", "text", ""],
       ["label", "Name of this phone", "text", (state.phone && state.phone.label) || ""]
     ];
@@ -466,8 +520,12 @@
     refresh.id = "refresh";
     refresh.addEventListener("click", function () {
       note("");
-      state.problem = state.problem === "unlinked" ? "unlinked" : null;
-      fetchLists(false).then(sync);
+      state.retryAt = 0;
+      if (state.problem !== "unlinked") {
+        state.problem = null;
+      }
+      // Asks the site again, also when it said "not linked" before.
+      fetchLists(false, true).then(sync);
     });
     top.appendChild(refresh);
     main.appendChild(top);
@@ -618,6 +676,18 @@
       state.problem = null;
     }
     sync().then(function () { return fetchLists(true); });
+  });
+  window.addEventListener("storage", function (event) {
+    if (event.key === PREFIX + "queue") {
+      mergeQueue(load("queue", []));
+      render();
+    } else if (event.key === PREFIX + "token") {
+      state.site = load("site", "");
+      state.token = load("token", "");
+      state.phone = load("phone", null);
+      state.problem = null;
+      render();
+    }
   });
   window.addEventListener("offline", function () {
     state.problem = "offline";
