@@ -496,10 +496,13 @@
           return fetchLists(false).then(sync);
         }
         var e = answer && answer.error;
-        note(e === "invalid" ? "That code is incorrect or no longer valid. Create a new one in Loupe Flow."
-          : e === "blocked" ? "Too many incorrect codes. Create a new code in Loupe Flow and try again later."
-            : e === "busy" ? "The site is busy. Please try again in a minute."
-              : "That did not work. Please check the code.", true);
+        var wait = answer && Number(answer.retryAfter) > 0 ? Math.ceil(Number(answer.retryAfter)) : 0;
+        note(e === "invalid" ? "That code is incorrect or no longer valid. Check it, or create a new one in Loupe Flow."
+          : e === "slow" ? "Too many incorrect codes. Please wait " + (wait > 90 ? Math.ceil(wait / 60) + " minutes"
+            : (wait || 10) + " seconds") + " before trying again."
+            : e === "blocked" ? "Too many incorrect codes. Create a new code in Loupe Flow: that lifts the pause."
+              : e === "busy" ? "The site is busy. Please try again in a minute."
+                : "That did not work. Please check the code.", true);
       }, function () {
         note("Cannot connect to that site. Check the address and your connection.", true);
       }).then(function () {
@@ -510,6 +513,14 @@
       });
     });
     main.appendChild(form);
+  }
+
+  function forget() {
+    state.token = "";
+    state.phone = null;
+    state.problem = null;
+    drop("token");
+    drop("phone");
   }
 
   function renderLists(main) {
@@ -569,13 +580,19 @@
         return;
       }
       state.unlinkAsked = false;
-      state.token = "";
-      state.phone = null;
-      state.problem = null;
-      drop("token");
-      drop("phone");
-      note("");
-      render();
+      unlink.disabled = true;
+      note("Unlinking...");
+      // The site removes the phone too; without the site nothing changes.
+      call({ action: "unlink", token: state.token }).then(function (answer) {
+        if (answer && (answer.ok === true || answer.error === "no_access")) {
+          forget();
+          note("Unlinked. Loupe Flow no longer lists this phone.");
+        } else {
+          note("The site is busy. Please try to unlink again in a minute.", true);
+        }
+      }, function () {
+        note("Unlinking needs a connection to the site. Please try again when there is one.", true);
+      }).then(render);
     });
     foot.appendChild(unlink);
     main.appendChild(foot);
